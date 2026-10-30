@@ -121,7 +121,9 @@ ${head}</head>
 <header class="site-header">
   <a class="brand-link" href="${prefix}">${esc(config.title)}</a>
   <nav class="site-nav" aria-label="Main">${nav}</nav>
-  <a class="add-btn" href="${newUrl}" target="_blank" rel="noopener">Add an entry</a>
+  ${bodyClass === "home"
+    ? `<button type="button" id="who" class="who" hidden></button><button type="button" class="add-btn" data-add="">Add an entry</button>`
+    : `<a class="add-btn" href="${prefix}?add">Add an entry</a>`}
 </header>
 ${body}
 </body>
@@ -129,7 +131,7 @@ ${body}
 `;
 }
 
-const footer = prefix => `<footer class="site-footer">Anyone can read this knowledge base. The content is stored openly on <a href="${repoUrl}">GitHub</a>. <a href="${prefix}contribute/">Want to help?</a></footer>`;
+const footer = prefix => `<footer class="site-footer">Anyone can read this knowledge base. The content is stored openly on <a href="${repoUrl}">GitHub</a>. <a href="${prefix}contribute/">Want to help?</a> Using an AI assistant? <a href="${prefix}ai-guide/">Read the AI guide</a>.</footer>`;
 const keyClass = e => e.type === "issue" ? (e.status === "open" ? "issue-open" : "issue") : e.type;
 const subLine = e => TYPE_NAME[e.type] + (e.status ? " · " + e.status[0].toUpperCase() + e.status.slice(1) : "");
 const entryRow = (e, prefix, extra = "") => `<li><a href="${prefix}entries/${e.id}/"><span class="k ${keyClass(e)}"></span><span>${esc(e.title)}<small>${esc(subLine(e) + extra)}</small></span></a></li>`;
@@ -212,12 +214,16 @@ write("index.html", layout({
       </div>
     </section>
     <aside class="panel" id="panel" aria-live="polite"></aside>
+    <aside class="panel editor" id="editor" aria-label="Add or edit an entry" hidden></aside>
   </main>
 </div>
-<script>window.KB = ${JSON.stringify(mapData).replace(/</g, "\\u003c")};</script>
+<script>window.KB = ${JSON.stringify(mapData).replace(/</g, "\\u003c")};
+window.KB_CONFIG = ${JSON.stringify({ api: config.api || "", turnstileSiteKey: config.turnstileSiteKey || "", newUrl })};</script>
 ${searchScripts("")}
+${config.turnstileSiteKey ? `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async></script>` : ""}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-<script src="assets/map.js"></script>`,
+<script src="assets/map.js"></script>
+<script src="assets/editor.js"></script>`,
 }));
 
 // One page per entry
@@ -240,7 +246,7 @@ for (const e of entries) {
   <div class="meta">
     ${e.contributors.length ? `<span>Added by ${esc(e.contributors.join(", "))}</span>` : ""}
     ${e.updated ? `<span>Last updated ${esc(e.updated)}</span>` : ""}
-    <a href="${editUrl(e)}" target="_blank" rel="noopener">Edit this entry</a>
+    <a href="${prefix}?edit=${encodeURIComponent(e.id)}">Edit this entry</a>
     <a href="${prefix}?q=${encodeURIComponent(e.title)}">Show on the map</a>
   </div>
 </main>
@@ -290,24 +296,109 @@ write("contribute/index.html", layout({
   title: "How to contribute", prefix: "../", active: "contribute/",
   body: `<main class="page">
   <h1>How to contribute</h1>
-  <p class="lead">Anyone invited as an editor can add or change entries through a simple online form. No technical knowledge is needed.</p>
+  <p class="lead">Anyone can add or improve entries with a short form beside the map. No account or technical knowledge is needed.</p>
   <h2>Add an entry</h2>
   <ol class="steps">
-    <li>Click <b>Add an entry</b> at the top of any page.</li>
-    <li>Sign in. If you were invited by email, use the link in your invitation. If you have a GitHub account, you can sign in with that.</li>
-    <li>Fill in the title, type of entry, top tag and a short description. Everything else is optional.</li>
-    <li>Click <b>Save</b>. The website updates by itself within a couple of minutes.</li>
+    <li>Click <b>Add an entry</b> at the top of any page. A form opens beside the map.</li>
+    <li>Fill in the title, choose the type of entry and top tag, and write the text. Start the text with a one-paragraph summary.</li>
+    <li>Click <b>Send suggestion</b>. An editor checks it, and once approved it appears on the map within a couple of minutes.</li>
   </ol>
   <h2>Fix or improve an entry</h2>
-  <p>Open the entry and click <b>Edit this entry</b> at the bottom. Make your changes and click <b>Save</b>.</p>
+  <p>Click the entry on the map, then <b>Edit this entry</b> under it. Make your changes and send them.</p>
   <h2>Add a new top tag</h2>
-  <p>Top tags are the branches of the map. In the editor, open <b>Top tags</b> in the menu and add one. It then appears in the Top tag list when you edit an entry.</p>
+  <p>Top tags are the branches of the map. In the form, choose <b>+ New top tag…</b> in the Top tag list and type its name. Editors can rename a top tag by clicking it on the map.</p>
   <div class="callout"><p>Every change is saved with its full history, so nothing is lost by mistake and anything can be undone.</p></div>
-  <h2>Getting invited</h2>
-  <p>Ask an existing editor to invite you. They can add you as a collaborator by email in the editor's settings.</p>
+  <h2>Using an AI assistant</h2>
+  <p>Your AI can turn notes and reports into entries in the right structure. Give it the <a href="../ai-guide/">guide for AI assistants</a> along with your notes, and check what it produces before sending.</p>
+  <h2>Getting invited as an editor</h2>
+  <p>Anyone can suggest entries and changes. Editors can also publish straight away and approve suggestions. Ask an existing editor for a personal sign-in link.</p>
 </main>
 ${footer("../")}`,
 }));
+
+// ---------- for AI assistants ----------
+const site = config.siteUrl.replace(/\/?$/, "/");
+write("ai-guide/index.html", layout({
+  title: "Guide for AI assistants", prefix: "../", active: null,
+  description: "How AI assistants can add entries to this knowledge base in the right structure.",
+  body: `<main class="page prose-page"><div class="prose">${marked.parse(fs.readFileSync(path.join(ROOT, "AI-GUIDE.md"), "utf8"))}</div></main>
+${footer("../")}`,
+}));
+write("api/entries.json", JSON.stringify(entries.map(e => ({
+  id: e.id, title: e.title, type: TYPE_NAME[e.type], status: e.status ? e.status[0].toUpperCase() + e.status.slice(1) : undefined,
+  top_tag: e.topicName, tags: e.tags, summary: e.summary, related: e.links.map(id => byId.get(id).title),
+  url: `${site}entries/${e.id}/`, updated: e.updated || undefined,
+})), null, 2));
+write("api/topics.json", JSON.stringify(topicList.map(t => ({ name: t.name, description: t.description || undefined, entries: t.items.length })), null, 2));
+write("llms.txt", `# ${config.title}
+
+> ${config.description}
+
+AI assistants: read the guide before adding or changing entries. It explains the entry structure and how to send entries.
+
+- [Guide for AI assistants](${site}ai-guide/)
+- [All entries as JSON](${site}api/entries.json)
+- [Top tags as JSON](${site}api/topics.json)
+- [Save service description (OpenAPI)](${site}openapi.yaml)
+`);
+const apiUrl = config.api ? config.api.replace(/\/$/, "") : "https://save-service-not-set-up-yet.example";
+write("openapi.yaml", `openapi: 3.1.0
+info:
+  title: ${config.title} save service
+  version: "1"
+  description: >-
+    Adds or changes knowledge base entries. Read ${site}ai-guide/ first.
+    Without an Authorization header, entries are sent as suggestions for an editor to approve.${config.api ? "" : " NOTE: the save service is not set up yet, so this address does not work."}
+servers:
+  - url: ${apiUrl}
+paths:
+  /api/entries:
+    post:
+      operationId: saveEntry
+      summary: Add a new entry, or change one (include id and sha)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entry]
+              properties:
+                name: { type: string, description: Name of the person sending it }
+                id: { type: string, description: Only when changing an existing entry. From entries.json }
+                sha: { type: string, description: Only when changing an entry. From GET /api/entry }
+                entry:
+                  type: object
+                  required: [title, type, top_tag]
+                  properties:
+                    title: { type: string, maxLength: 150 }
+                    type: { type: string, enum: [Explainer, Learning, Issue] }
+                    status: { type: string, enum: [Open, Resolved], description: Issues only }
+                    top_tag: { type: string, description: An existing top tag from api/topics.json where one fits }
+                    body: { type: string, description: Markdown. The first paragraph is the summary }
+                    tags: { type: array, items: { type: string } }
+                    related: { type: array, items: { type: string }, description: Exact titles of existing entries }
+                    contributors: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode: { type: string, enum: [suggested, published] }
+        "400":
+          description: Something needs fixing; the error says what
+  /api/entry:
+    get:
+      operationId: getEntry
+      summary: The current version of one entry, for changing it
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: The entry's fields, text and sha }
+`);
 
 write("404.html", layout({
   title: "Page not found", prefix: "/" + config.repo.split("/")[1] + "/", active: null,

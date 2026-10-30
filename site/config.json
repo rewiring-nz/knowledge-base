@@ -4,5 +4,8 @@
   "centreLabel": "Knowledge base",
   "repo": "rewiring-nz/knowledge-base",
   "branch": "main",
-  "editor": "https://app.pagescms.org"
+  "editor": "https://app.pagescms.org",
+  "siteUrl": "https://rewiring-nz.github.io/knowledge-base/",
+  "api": "",
+  "turnstileSiteKey": ""
 }

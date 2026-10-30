@@ -214,6 +214,7 @@ function panTo(id) {
 
 // ---------- interaction ----------
 function onNode(d) {
+  if (window.KBEditor) window.KBEditor.closeIfIdle();
   if (d.kind === "root") {
     const anyOpen = TOPICS.some(t => !state.collapsed.has(t.id));
     TOPICS.forEach(t => anyOpen ? state.collapsed.add(t.id) : state.collapsed.delete(t.id));
@@ -232,6 +233,7 @@ function onNode(d) {
 function selectItem(id) {
   const it = ITEMS.get(id);
   if (!it) return;
+  if (window.KBEditor) window.KBEditor.closeIfIdle();
   state.selected = id;
   state.collapsed.delete(it.topic.id);
   if (!passes(it)) { state.filters[it.type] = true; if (it.status) state.filters[it.status] = true; syncChips(); }
@@ -278,15 +280,19 @@ function renderPanel() {
         ${it.contributors ? `<span>Added by ${esc(it.contributors)}</span>` : ""}
         ${it.updated ? `<span>Updated ${esc(it.updated)}</span>` : ""}
         <a href="${esc(it.url)}">Open as its own page</a>
-        <a href="${esc(it.editUrl)}" target="_blank" rel="noopener">Edit this entry</a>
-      </div>`;
+      </div>
+      <button type="button" class="btn-ghost edit-btn" data-edit="${esc(it.id)}">Edit this entry</button>`;
   } else if (topic) {
     const items = topic.items.filter(passes);
     p.innerHTML = `${backLink}
       <p class="crumb">${esc(ROOT_LABEL)}</p>
       <h2>${esc(topic.name)}</h2>
       <p>${items.length} item${items.length === 1 ? "" : "s"} shown. Click the topic on the map again to ${state.collapsed.has(topic.id) ? "open" : "close"} it.</p>
-      <ul class="list">${items.map(i => itemRow(i, subLine(i))).join("")}</ul>`;
+      <ul class="list">${items.map(i => itemRow(i, subLine(i))).join("")}</ul>
+      <div class="topic-actions">
+        <button type="button" class="btn-ghost" data-add="${esc(topic.name)}">Add an entry here</button>
+        <button type="button" class="linkish editor-only" data-rename-topic="${esc(topic.name)}">Rename this top tag</button>
+      </div>`;
   } else if (matches) {
     const n = lastResults.length;
     p.innerHTML = `<p class="crumb">Search</p>
@@ -373,6 +379,9 @@ new ResizeObserver(() => {
   if (state.selected && layout.pos.has(state.selected)) panTo(state.selected);
   else if (!userMoved) fit(false);
 }).observe(document.querySelector(".map"));
+
+// Lets the editor panel (assets/editor.js) redraw the map when it closes
+window.KBMap = { render: () => render(), selectItem };
 
 ingest(KB.topics);
 const start = new URLSearchParams(location.search);

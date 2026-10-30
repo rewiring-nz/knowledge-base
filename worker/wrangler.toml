@@ -1,0 +1,16 @@
+# Cloudflare Worker that saves entries from the website to GitHub.
+# Setup steps are in ../README.md under "In-map editing".
+name = "knowledge-base-save"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+REPO = "rewiring-nz/knowledge-base"
+BRANCH = "main"
+SITE_URL = "https://rewiring-nz.github.io/knowledge-base/"
+# Websites allowed to use this service (comma separated)
+ALLOWED_ORIGINS = "https://rewiring-nz.github.io"
+
+# Secrets, set with `npx wrangler secret put NAME` (never written in this file):
+#   GITHUB_TOKEN      fine-grained token with Contents and Pull requests read/write on the repository
+#   TURNSTILE_SECRET  optional, Cloudflare Turnstile secret key for spam protection on suggestions
