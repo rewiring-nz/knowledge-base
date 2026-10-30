@@ -100,7 +100,7 @@ const newUrl = `${editorBase}/entries/new`;
 const repoUrl = `https://github.com/${config.repo}`;
 
 // ---------- page layout ----------
-const FONTS = "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&display=swap";
+const FONTS = "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500&display=swap";
 const NAV = [["", "Map"], ["all/", "Search entries"], ["contribute/", "How to contribute"]];
 
 function layout({ title, prefix, active, description, body, bodyClass = "reading", head = "" }) {

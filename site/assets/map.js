@@ -21,9 +21,9 @@ const state = { q: "", topic: "", tag: "", selected: null, collapsed: new Set(),
 const DUR = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350;
 const ROW = 30, TOPIC_GAP = 150, LEAF_GAP = 42, LABEL_MAX = 46;
 const ROOT_LABEL = KB.centreLabel;
-const ROOT_FONT = '700 18px "Bricolage Grotesque", system-ui, sans-serif';
-const TOPIC_FONT = '700 14px "Bricolage Grotesque", system-ui, sans-serif';
-const ITEM_FONT = '400 13px "Atkinson Hyperlegible", system-ui, sans-serif';
+const ROOT_FONT = '600 16px Geist, system-ui, sans-serif';
+const TOPIC_FONT = '600 13.5px Geist, system-ui, sans-serif';
+const ITEM_FONT = '400 13px Geist, system-ui, sans-serif';
 
 const ctx = document.createElement("canvas").getContext("2d");
 const textW = (s, font) => { ctx.font = font; return ctx.measureText(s).width; };
@@ -124,7 +124,7 @@ function build(g, d) {
 
 function refresh(g, d) {
   if (d.kind === "root") {
-    g.select("rect").attr("x", -d.w / 2).attr("y", -22).attr("width", d.w).attr("height", 44).attr("rx", 22);
+    g.select("rect").attr("x", -d.w / 2).attr("y", -20).attr("width", d.w).attr("height", 40).attr("rx", 20);
     g.select("text").text(d.label);
   } else if (d.kind === "topic") {
     g.select("title").text(`${d.label}: ${d.count} items. Click to ${d.open ? "close" : "open"}.`);
@@ -323,14 +323,7 @@ function renderPanel() {
         <div class="stat"><b>${n(i => i.type === "learning")}</b><span>Learnings</span></div>
         <div class="stat"><b>${n(i => i.type === "explainer")}</b><span>Explainers</span></div>
       </div>
-      <h3>How to use it</h3>
-      <ul class="howto">
-        <li>Click an item to see its details and the items linked to it.</li>
-        <li>Click a topic to open or close it. Click the centre to open or close everything.</li>
-        <li>Search covers every word of every entry. Matches light up on the map and are listed here.</li>
-        <li>Use the top tag and tag lists to show just part of the map.</li>
-        <li>Drag to move around, scroll or pinch to zoom.</li>
-      </ul>`;
+      <p class="note">Click anything on the map to read it.</p>`;
   }
 }
 
