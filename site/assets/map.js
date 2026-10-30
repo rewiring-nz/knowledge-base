@@ -1,5 +1,7 @@
-// The map's data is written into the page by site/build.mjs as window.KB.
+// The map's data is written into the page by site/build.mjs as window.KB;
+// window.KB_SEARCH (assets/search-data.js) holds the full text used by search.
 const KB = window.KB;
+const SEARCH = window.KB_SEARCH || [];
 
 let TOPICS = [], ITEMS = new Map(), TOPIC_BY_ID = new Map();
 function ingest(topics) {
@@ -12,7 +14,7 @@ function ingest(topics) {
 }
 
 const TYPE_NAME = { issue: "Issue", learning: "Learning", explainer: "Explainer" };
-const state = { q: "", selected: null, collapsed: new Set(), filters: { issue: true, learning: true, explainer: true, open: true, resolved: true } };
+const state = { q: "", topic: "", tag: "", selected: null, collapsed: new Set(), filters: { issue: true, learning: true, explainer: true, open: true, resolved: true } };
 const DUR = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350;
 const ROW = 30, TOPIC_GAP = 150, LEAF_GAP = 42, LABEL_MAX = 46;
 const ROOT_LABEL = KB.centreLabel;
@@ -24,19 +26,22 @@ const ctx = document.createElement("canvas").getContext("2d");
 const textW = (s, font) => { ctx.font = font; return ctx.measureText(s).width; };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const short = s => s.length > LABEL_MAX ? s.slice(0, LABEL_MAX - 1).trimEnd() + "…" : s;
-const passes = it => state.filters[it.type] && (it.type !== "issue" || state.filters[it.status]);
+const passes = it => state.filters[it.type] && (it.type !== "issue" || state.filters[it.status]) &&
+  (!state.topic || it.topic.name === state.topic) && (!state.tag || it.tags.includes(state.tag));
 const keyClass = it => it.type === "issue" ? (it.status === "open" ? "issue-open" : "issue") : it.type;
 
+// Full-text search (assets/search.js) over the items the filters let through, best matches first.
+let lastResults = [];
 function matchSet() {
-  const words = state.q.toLowerCase().split(/\s+/).filter(Boolean);
-  if (!words.length) return null;
-  const m = new Set();
-  ITEMS.forEach(it => {
-    const hay = [it.title, it.summary, it.article || "", it.contributors || "", it.tags.join(" "), it.topic.name, TYPE_NAME[it.type], it.status || ""].join(" ").toLowerCase();
-    if (passes(it) && words.every(w => hay.includes(w))) m.add(it.id);
-  });
-  return m;
+  lastResults = [];
+  if (!state.q.trim()) return null;
+  const pool = SEARCH.filter(e => { const it = ITEMS.get(e.id); return it && passes(it); });
+  const { results, parsed } = KBSearch.search(pool, state.q);
+  if (parsed.empty) return null;
+  lastResults = results;
+  return new Set(results.map(r => r.entry.id));
 }
+const filtering = () => !!(state.topic || state.tag);
 
 const hPath = (x1, y1, x2, y2) => { const mx = (x1 + x2) / 2; return `M${x1},${y1}C${mx},${y1} ${mx},${y2} ${x2},${y2}`; };
 
@@ -48,8 +53,10 @@ function computeLayout() {
   const grow = (x, y) => { bounds.x0 = Math.min(bounds.x0, x); bounds.x1 = Math.max(bounds.x1, x); bounds.y0 = Math.min(bounds.y0, y - 18); bounds.y1 = Math.max(bounds.y1, y + 18); };
   nodes.push({ id: "root", kind: "root", x: 0, y: 0, sx: 0, sy: 0, w: rootW, label: ROOT_LABEL });
 
-  const half = Math.ceil(TOPICS.length / 2);
-  [[TOPICS.slice(0, half), 1], [TOPICS.slice(half), -1]].forEach(([topics, sign]) => {
+  // A top tag or tag filter hides branches with nothing left in them
+  const shown = filtering() ? TOPICS.filter(t => t.items.some(passes)) : TOPICS;
+  const half = Math.ceil(shown.length / 2);
+  [[shown.slice(0, half), 1], [shown.slice(half), -1]].forEach(([topics, sign]) => {
     const data = { children: topics.map(t => {
       const items = t.items.filter(passes);
       const forced = matches && items.some(i => matches.has(i.id));
@@ -228,6 +235,7 @@ function selectItem(id) {
   state.selected = id;
   state.collapsed.delete(it.topic.id);
   if (!passes(it)) { state.filters[it.type] = true; if (it.status) state.filters[it.status] = true; syncChips(); }
+  if (!passes(it)) { state.topic = state.tag = ""; selects.topic.value = selects.tag.value = ""; }
   render();
   panTo(id);
   if (matchMedia("(max-width: 760px)").matches) document.getElementById("panel").scrollIntoView({ behavior: DUR ? "smooth" : "auto", block: "start" });
@@ -235,6 +243,10 @@ function selectItem(id) {
 
 function itemRow(it, sub) {
   return `<li><button data-select="${it.id}"><span class="k ${keyClass(it)}"></span><span>${esc(it.title)}<small>${esc(sub)}</small></span></button></li>`;
+}
+function resultRow(r) {
+  const it = ITEMS.get(r.entry.id);
+  return `<li><button data-select="${it.id}"><span class="k ${keyClass(it)}"></span><span>${KBSearch.highlight(it.title, r.found)}<small>${esc(subLine(it) + " · " + it.topic.name)}</small><span class="mini-snippet">${KBSearch.snippet(r.entry, r.found, 140)}</span></span></button></li>`;
 }
 const subLine = it => TYPE_NAME[it.type] + (it.status ? " · " + it.status[0].toUpperCase() + it.status.slice(1) : "");
 
@@ -245,6 +257,10 @@ function renderPanel() {
   const topic = sel && TOPIC_BY_ID.get(sel);
   const matches = layout.matches;
   const backLink = matches ? `<button class="linkish" data-back>&larr; Back to ${matches.size} search result${matches.size === 1 ? "" : "s"}</button>` : "";
+  // An open entry gets a wider reading panel, scrolled to the top
+  document.querySelector(".main").classList.toggle("reading", !!it);
+  if (it && p.dataset.showing !== it.id) p.scrollTop = 0;
+  p.dataset.showing = it ? it.id : "";
 
   if (it) {
     const related = it.links.map(id => ITEMS.get(id)).filter(Boolean);
@@ -252,14 +268,18 @@ function renderPanel() {
       <p class="crumb">${esc(ROOT_LABEL)} &rsaquo; ${esc(it.topic.name)}</p>
       <h2>${esc(it.title)}</h2>
       <div class="pills"><span class="pill ${it.type}">${TYPE_NAME[it.type]}</span>${it.status ? `<span class="pill ${it.status}">${it.status === "open" ? "Open" : "Resolved"}</span>` : ""}</div>
-      ${/^https?:\/\//.test(it.image || "") ? `<img class="photo" src="${esc(it.image)}" alt="">` : ""}
-      ${it.summary ? `<p>${esc(it.summary)}</p>` : ""}
-      ${it.contributors ? `<p class="crumb">Added by ${esc(it.contributors)}</p>` : ""}
+      ${it.image ? `<img class="photo" src="${esc(it.image)}" alt="">` : ""}
+      ${it.lead ? `<p class="lead">${esc(it.lead)}</p>` : ""}
+      ${it.html ? `<div class="prose">${it.html}</div>` : (!it.lead && it.summary ? `<p>${esc(it.summary)}</p>` : "")}
       ${it.tags.length ? `<h3>Tags</h3>
       <div class="tags">${it.tags.map(t => `<button class="tag" data-tag="${esc(t)}">${esc(t)}</button>`).join("")}</div>` : ""}
       ${related.length ? `<h3>Related</h3><ul class="list">${related.map(r => itemRow(r, subLine(r) + " · " + r.topic.name)).join("")}</ul>` : ""}
-      <a class="read-btn" href="${esc(it.url)}">Read the full entry</a>
-      <p class="note"><a href="${esc(it.editUrl)}" target="_blank" rel="noopener">Edit this entry</a></p>`;
+      <div class="meta">
+        ${it.contributors ? `<span>Added by ${esc(it.contributors)}</span>` : ""}
+        ${it.updated ? `<span>Updated ${esc(it.updated)}</span>` : ""}
+        <a href="${esc(it.url)}">Open as its own page</a>
+        <a href="${esc(it.editUrl)}" target="_blank" rel="noopener">Edit this entry</a>
+      </div>`;
   } else if (topic) {
     const items = topic.items.filter(passes);
     p.innerHTML = `${backLink}
@@ -268,11 +288,12 @@ function renderPanel() {
       <p>${items.length} item${items.length === 1 ? "" : "s"} shown. Click the topic on the map again to ${state.collapsed.has(topic.id) ? "open" : "close"} it.</p>
       <ul class="list">${items.map(i => itemRow(i, subLine(i))).join("")}</ul>`;
   } else if (matches) {
-    const list = [...matches].map(id => ITEMS.get(id));
+    const n = lastResults.length;
     p.innerHTML = `<p class="crumb">Search</p>
-      <h2>${list.length} result${list.length === 1 ? "" : "s"} for “${esc(state.q.trim())}”</h2>
-      ${list.length ? `<ul class="list">${list.map(i => itemRow(i, subLine(i) + " · " + i.topic.name)).join("")}</ul>`
-        : `<p>Nothing matches. Try a shorter word, or check the filters above.</p>`}`;
+      <h2>${n} result${n === 1 ? "" : "s"} for “${esc(state.q.trim())}”</h2>
+      ${n ? `<ul class="list">${lastResults.map(resultRow).join("")}</ul>
+        <p class="note"><a href="all/?q=${encodeURIComponent(state.q.trim())}">Open these results on the search page</a></p>`
+        : `<p>Nothing matches. Try fewer or shorter words, or check the filters above.</p>`}`;
   } else {
     const all = [...ITEMS.values()];
     const n = f => all.filter(f).length;
@@ -289,7 +310,8 @@ function renderPanel() {
       <ul class="howto">
         <li>Click an item to see its details and the items linked to it.</li>
         <li>Click a topic to open or close it. Click the centre to open or close everything.</li>
-        <li>Type in the search box to highlight matching items.</li>
+        <li>Search covers every word of every entry. Matches light up on the map and are listed here.</li>
+        <li>Use the top tag and tag lists to show just part of the map.</li>
         <li>Drag to move around, scroll or pinch to zoom.</li>
       </ul>`;
   }
@@ -299,17 +321,32 @@ document.getElementById("panel").addEventListener("click", e => {
   const s = e.target.closest("[data-select]");
   if (s) return selectItem(s.dataset.select);
   const tag = e.target.closest("[data-tag]");
-  if (tag) { setQuery(tag.dataset.tag); return; }
+  if (tag) { setFilter("tag", tag.dataset.tag); return; }
   if (e.target.closest("[data-back]")) { state.selected = null; render(); }
 });
 
 const q = document.getElementById("q");
 function setQuery(v) { q.value = v; state.q = v; state.selected = null; render(); }
-q.addEventListener("input", () => { state.q = q.value; state.selected = null; render(); });
+let typing;
+q.addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(() => { state.q = q.value; state.selected = null; render(); }, 120); });
 q.addEventListener("keydown", e => {
-  if (e.key === "Enter" && layout.matches && layout.matches.size) selectItem([...layout.matches][0]);
+  if (e.key === "Enter") { clearTimeout(typing); state.q = q.value; render(); if (lastResults.length) selectItem(lastResults[0].entry.id); }
   if (e.key === "Escape") setQuery("");
 });
+
+// Top tag and tag lists
+const selects = { topic: document.getElementById("m-topic"), tag: document.getElementById("m-tag") };
+function setFilter(kind, value) {
+  const sel = selects[kind];
+  if (value && ![...sel.options].some(o => o.value === value)) sel.add(new Option(value, value));
+  sel.value = value || "";
+  state[kind] = sel.value;
+  const it = state.selected && ITEMS.get(state.selected);
+  if (it && !passes(it)) state.selected = null;
+  render();
+  setTimeout(() => fit(), DUR);
+}
+Object.entries(selects).forEach(([kind, sel]) => sel.addEventListener("change", () => setFilter(kind, sel.value)));
 
 function syncChips() {
   document.querySelectorAll(".chip[data-f]").forEach(b => b.setAttribute("aria-pressed", String(state.filters[b.dataset.f])));
@@ -331,11 +368,19 @@ svg.on("click", e => { if (e.target === svg.node() && state.selected) { state.se
 // Refit whenever the map box changes size, until the viewer pans or zooms it themselves
 let userMoved = false;
 zoom.on("start.user", e => { if (e.sourceEvent) userMoved = true; });
-new ResizeObserver(() => { if (!userMoved && layout) fit(false); }).observe(document.querySelector(".map"));
+new ResizeObserver(() => {
+  if (!layout) return;
+  if (state.selected && layout.pos.has(state.selected)) panTo(state.selected);
+  else if (!userMoved) fit(false);
+}).observe(document.querySelector(".map"));
 
 ingest(KB.topics);
-const initialQuery = new URLSearchParams(location.search).get("q");
-if (initialQuery) { q.value = initialQuery; state.q = initialQuery; }
+const start = new URLSearchParams(location.search);
+if (start.get("q")) { q.value = start.get("q"); state.q = q.value; }
+for (const kind of ["topic", "tag"]) {
+  const v = start.get(kind);
+  if (v) { if (![...selects[kind].options].some(o => o.value === v)) selects[kind].add(new Option(v, v)); selects[kind].value = v; state[kind] = v; }
+}
 render();
 fit(false);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { render(); if (!userMoved) fit(false); });

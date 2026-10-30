@@ -1,7 +1,7 @@
 ---
 title: Vehicle-To-Grid Explainer
 type: Explainer
-top_tag: Two-way Charging
+top_tag: "Two Way Charging (V2G, V2L)"
 tags: [V2G, EV]
 related: [Vehicle-To-Load Explainer]
 contributors: [Josh]
