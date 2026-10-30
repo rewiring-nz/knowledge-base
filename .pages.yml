@@ -1,0 +1,103 @@
+# Pages CMS configuration: defines the editing screens at https://app.pagescms.org
+media:
+  input: media
+  output: /media
+  categories: [image]
+
+content:
+  - name: entries
+    label: Entries
+    type: collection
+    path: entries
+    filename: "{primary}.md"
+    format: yaml-frontmatter
+    view:
+      fields: [title, type, top_tag]
+      primary: title
+      sort: [title]
+      search: [title, description, tags]
+    fields:
+      - name: title
+        label: Title
+        type: string
+        required: true
+        description: A short, plain-English headline.
+      - name: type
+        label: Type of entry
+        type: select
+        required: true
+        options:
+          values:
+            - name: explainer
+              label: Explainer (educational background)
+            - name: learning
+              label: Learning (something we found out)
+            - name: issue
+              label: Issue (a problem)
+      - name: status
+        label: Status
+        type: select
+        description: Issues only. Leave blank for explainers and learnings.
+        options:
+          values:
+            - name: open
+              label: Open
+            - name: resolved
+              label: Resolved
+      - name: top_tag
+        label: Top tag
+        type: reference
+        required: true
+        description: The branch this entry sits under on the map. New top tags are added under "Top tags".
+        options:
+          collection: topics
+          value: "{name}"
+          label: "{name}"
+          search: name
+      - name: description
+        label: Short description
+        type: text
+        description: One to three sentences. Shown on the map and in search results.
+      - name: tags
+        label: Tags
+        type: string
+        list: true
+        description: Keywords people might search for, one per line.
+      - name: related
+        label: Related entries
+        type: reference
+        options:
+          collection: entries
+          multiple: true
+          value: "{path}"
+          label: "{title}"
+          search: title
+      - name: contributors
+        label: Contributors
+        type: string
+        list: true
+      - name: image
+        label: Image
+        type: image
+      - name: body
+        label: Article
+        type: rich-text
+        description: The full article. Optional; short entries can leave this empty.
+
+  - name: topics
+    label: Top tags
+    type: collection
+    path: topics
+    filename: "{primary}.md"
+    format: yaml-frontmatter
+    view:
+      fields: [name]
+      primary: name
+    fields:
+      - name: name
+        label: Name
+        type: string
+        required: true
+      - name: description
+        label: Description
+        type: text

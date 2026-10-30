@@ -1,0 +1,13 @@
+{
+  "name": "knowledge-base",
+  "private": true,
+  "type": "module",
+  "description": "Builds the Electrification Knowledge Base website from the entries folder.",
+  "scripts": {
+    "build": "node site/build.mjs"
+  },
+  "dependencies": {
+    "js-yaml": "4.1.0",
+    "marked": "12.0.2"
+  }
+}
