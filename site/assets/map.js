@@ -2,6 +2,9 @@
 // window.KB_SEARCH (assets/search-data.js) holds the full text used by search.
 const KB = window.KB;
 const SEARCH = window.KB_SEARCH || [];
+// Untouched copies, so changes waiting to go live (assets/editor.js) can be laid over them and removed again.
+const BASE_TOPICS = JSON.parse(JSON.stringify(KB.topics));
+const BASE_SEARCH = SEARCH.slice();
 
 let TOPICS = [], ITEMS = new Map(), TOPIC_BY_ID = new Map();
 function ingest(topics) {
@@ -82,7 +85,7 @@ function computeLayout() {
         const label = short(it.title);
         const n = { id: it.id, kind: "item", x, y: ly, sx: xOuter, sy: y, sign, label, item: it, dim: matches ? !matches.has(it.id) : false, match: matches ? matches.has(it.id) : false };
         nodes.push(n); pos.set(it.id, n);
-        edges.push({ id: "e-" + it.id, d: hPath(xOuter, y, x - sign * 7, ly), start: hPath(xOuter, y, xOuter, y), dim: n.dim });
+        edges.push({ id: "e-" + it.id, d: hPath(xOuter, y, x - sign * 7, ly), start: hPath(xOuter, y, xOuter, y), dim: n.dim, pending: !!it.pending });
         grow(x, ly); grow(x + sign * (14 + textW(label, ITEM_FONT)), ly);
       });
     });
@@ -134,6 +137,7 @@ function refresh(g, d) {
     g.select("title").text(it.title);
     g.select(".check").attr("display", it.type === "issue" && it.status === "resolved" ? null : "none");
     g.select(".item-lbl").attr("x", d.sign * 13).attr("text-anchor", d.sign > 0 ? "start" : "end").text(d.label);
+    if (it.pending) g.select(".item-lbl").append("tspan").attr("class", "pending-tag").attr("dx", 8).text(it.pending === "publishing" ? "Publishing" : "Suggested");
   }
 }
 
@@ -143,7 +147,7 @@ function classes(d) {
   if (d.kind === "topic") return "node topic" + (sel === d.id ? " selected" : "");
   const it = d.item, s = sel && ITEMS.get(sel);
   return "node item t-" + it.type + (it.status ? " s-" + it.status : "") + (d.match ? " match" : "") +
-    (sel === it.id ? " selected" : "") + (s && s.links.includes(it.id) ? " related" : "");
+    (sel === it.id ? " selected" : "") + (s && s.links.includes(it.id) ? " related" : "") + (it.pending ? " pending" : "");
 }
 
 function ariaLabel(d) {
@@ -161,7 +165,7 @@ function render() {
     enter => enter.append("path").attr("class", "edge").attr("d", d => d.start || d.d).attr("opacity", 0),
     update => update,
     exit => exit.transition(t).attr("opacity", 0).remove()
-  ).transition(t).attr("d", d => d.d).attr("opacity", d => d.dim ? 0.3 : 1);
+  ).attr("class", d => "edge" + (d.pending ? " pending" : "")).transition(t).attr("d", d => d.d).attr("opacity", d => d.dim ? 0.3 : 1);
 
   const sel = gNodes.selectAll("g.node").data(layout.nodes, d => d.id).join(
     enter => {
@@ -266,10 +270,17 @@ function renderPanel() {
 
   if (it) {
     const related = it.links.map(id => ITEMS.get(id)).filter(Boolean);
+    const pend = it.pending;
+    const pendNote = !pend ? ""
+      : pend === "publishing" ? `<p class="pending-note">Publishing. Live for everyone in a couple of minutes.</p>`
+      : pend === "review" ? `<div class="pending-note"><p>${it.isEdit ? "Changes" : "New entry"} from <b>${esc(it.by || "someone")}</b></p>
+          <div class="ed-actions"><button type="button" class="btn-ghost" data-reject="${esc(it.number)}">Reject</button><button type="button" class="btn-primary" data-approve="${esc(it.number)}">Approve</button></div></div>`
+      : `<p class="pending-note">Waiting for approval. Only you can see this.</p>`;
     p.innerHTML = `${backLink}
       <p class="crumb">${esc(ROOT_LABEL)} &rsaquo; ${esc(it.topic.name)}</p>
       <h2>${esc(it.title)}</h2>
-      <div class="pills"><span class="pill ${it.type}">${TYPE_NAME[it.type]}</span>${it.status ? `<span class="pill ${it.status}">${it.status === "open" ? "Open" : "Resolved"}</span>` : ""}</div>
+      <div class="pills"><span class="pill ${it.type}">${TYPE_NAME[it.type]}</span>${it.status ? `<span class="pill ${it.status}">${it.status === "open" ? "Open" : "Resolved"}</span>` : ""}${pend ? `<span class="pill pending">${pend === "publishing" ? "Publishing" : "Suggested"}</span>` : ""}</div>
+      ${pendNote}
       ${it.image ? `<img class="photo" src="${esc(it.image)}" alt="">` : ""}
       ${it.lead ? `<p class="lead">${esc(it.lead)}</p>` : ""}
       ${it.html ? `<div class="prose">${it.html}</div>` : (!it.lead && it.summary ? `<p>${esc(it.summary)}</p>` : "")}
@@ -279,9 +290,9 @@ function renderPanel() {
       <div class="meta">
         ${it.contributors ? `<span>Added by ${esc(it.contributors)}</span>` : ""}
         ${it.updated ? `<span>Updated ${esc(it.updated)}</span>` : ""}
-        <a href="${esc(it.url)}">Open as its own page</a>
+        ${pend ? "" : `<a href="${esc(it.url)}">Open as its own page</a>`}
       </div>
-      <button type="button" class="btn-ghost edit-btn" data-edit="${esc(it.id)}">Edit this entry</button>`;
+      ${pend ? "" : `<button type="button" class="btn-ghost edit-btn" data-edit="${esc(it.id)}">Edit this entry</button>`}`;
   } else if (topic) {
     const items = topic.items.filter(passes);
     p.innerHTML = `${backLink}
@@ -381,7 +392,33 @@ new ResizeObserver(() => {
 }).observe(document.querySelector(".map"));
 
 // Lets the editor panel (assets/editor.js) redraw the map when it closes
-window.KBMap = { render: () => render(), selectItem };
+// Lays changes that aren't on the live site yet over the map, in their own colour.
+// Each item replaces the live entry with the same id, or is added under its top tag.
+function applyPending(list) {
+  const topics = JSON.parse(JSON.stringify(BASE_TOPICS));
+  const byName = new Map(topics.map(t => [t.name.toLowerCase(), t]));
+  const live = new Map();
+  const titleToId = new Map();
+  topics.forEach(t => t.items.forEach(i => { live.set(i.id, i); titleToId.set(i.title.toLowerCase(), i.id); }));
+  list.forEach(p => titleToId.set(p.title.toLowerCase(), p.id));
+  for (const p of list) {
+    topics.forEach(t => { t.items = t.items.filter(i => i.id !== p.id); });
+    let t = byName.get(p.top_tag.toLowerCase());
+    if (!t) { t = { id: "topic-new-" + p.top_tag.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name: p.top_tag, items: [] }; topics.push(t); byName.set(p.top_tag.toLowerCase(), t); }
+    const was = live.get(p.id);
+    t.items.push({ ...p, isEdit: p.isEdit ?? !!was, links: p.related.map(r => titleToId.get(r.toLowerCase())).filter(Boolean), url: was ? was.url : "", updated: "" });
+  }
+  const pendingIds = new Set(list.map(p => p.id));
+  SEARCH.length = 0;
+  BASE_SEARCH.filter(e => !pendingIds.has(e.id)).forEach(e => SEARCH.push(e));
+  list.forEach(p => SEARCH.push({ id: p.id, url: "", title: p.title, type: p.type, status: p.status, topic: p.top_tag, tags: p.tags, contributors: p.contributorsList, summary: p.summary, text: p.text }));
+  ingest(topics.filter(t => t.items.length).sort((a, b) => a.name.localeCompare(b.name)));
+  const legend = document.querySelector(".legend-pending");
+  if (legend) legend.hidden = !list.length;
+  render();
+}
+
+window.KBMap = { render: () => render(), selectItem, applyPending };
 
 ingest(KB.topics);
 const start = new URLSearchParams(location.search);

@@ -239,7 +239,21 @@ async function route(req, env) {
       body: `Suggested by: ${who}\n\n${id ? `Changes to \`${filePath}\`` : "New entry"}, sent from the map. Approve or reject it from the map's editor tools.`,
     });
     await g.gh("POST", `/repos/${g.repo}/issues/${pr.number}/labels`, { labels: ["suggestion"] });
-    return { mode: "suggested" };
+    return { mode: "suggested", number: pr.number, id: filePath.replace(/^entries\/|\.md$/g, "") };
+  }
+
+  // Whether suggestions have been approved yet. Open to anyone; says nothing about their content.
+  if (req.method === "GET" && path === "/api/suggestions/status") {
+    const nums = String(url.searchParams.get("n") || "").split(",").filter(n => /^\d{1,7}$/.test(n)).slice(0, 20);
+    const statuses = {};
+    for (const n of nums) {
+      try {
+        const pr = await g.gh("GET", `/repos/${g.repo}/pulls/${n}`);
+        if (!pr.labels.some(l => l.name === "suggestion")) continue;
+        statuses[n] = pr.merged_at ? { state: "approved", at: pr.merged_at } : pr.state === "closed" ? { state: "rejected" } : { state: "waiting" };
+      } catch (e) { if (e.status !== 404) throw e; }
+    }
+    return { statuses };
   }
 
   // Rename a top tag everywhere it's used
@@ -282,10 +296,13 @@ async function route(req, env) {
       const file = changed.find(f => f.filename.startsWith("entries/"));
       const content = file ? await g.readFile(file.filename, pr.head.sha) : null;
       const parsed = content ? parseEntry(content.text) : { data: {}, body: "" };
+      const d = parsed.data;
       out.push({
         number: pr.number, created: pr.created_at, isEdit: file ? file.status === "modified" : false,
+        id: file ? file.filename.replace(/^entries\/|\.md$/g, "") : "",
         by: (pr.body || "").match(/^Suggested by: (.*)$/m)?.[1] || "Someone",
-        title: parsed.data.title || pr.title, type: parsed.data.type || "", top_tag: parsed.data.top_tag || "",
+        title: d.title || pr.title, type: d.type || "", top_tag: d.top_tag || "", status: d.status || "",
+        tags: cleanList(d.tags, 50, 100), related: cleanList(d.related, 50, 200), contributors: cleanList(d.contributors, 20, 100),
         body: parsed.body,
       });
     }

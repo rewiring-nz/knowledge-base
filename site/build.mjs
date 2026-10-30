@@ -143,8 +143,11 @@ function write(rel, html) {
 }
 
 // ---------- build ----------
+// When this build ran. The map uses it to tell when saved changes have reached the live site.
+const BUILT_AT = new Date().toISOString();
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
+write("build.json", JSON.stringify({ builtAt: BUILT_AT }));
 fs.cpSync(path.join(ROOT, "site/assets"), path.join(OUT, "assets"), { recursive: true });
 if (fs.existsSync(path.join(ROOT, "media"))) fs.cpSync(path.join(ROOT, "media"), path.join(OUT, "media"), { recursive: true });
 
@@ -163,6 +166,7 @@ const mapData = {
   title: config.title,
   description: config.description,
   centreLabel: config.centreLabel,
+  builtAt: BUILT_AT,
   topics: topicList.map(t => ({
     id: "topic-" + t.id,
     name: t.name,
@@ -211,6 +215,7 @@ write("index.html", layout({
         <span><i class="k issue"></i>Resolved issue</span>
         <span><i class="k learning"></i>Learning</span>
         <span><i class="k explainer"></i>Explainer</span>
+        <span class="legend-pending" hidden><i class="k pending"></i>Suggested</span>
       </div>
     </section>
     <aside class="panel" id="panel" aria-live="polite"></aside>
