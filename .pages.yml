@@ -11,11 +11,12 @@ content:
     path: entries
     filename: "{primary}.md"
     format: yaml-frontmatter
+    exclude: [README.md]
     view:
       fields: [title, type, top_tag]
       primary: title
       sort: [title]
-      search: [title, description, tags]
+      search: [title, tags, body]
     fields:
       - name: title
         label: Title
@@ -26,52 +27,44 @@ content:
         label: Type of entry
         type: select
         required: true
+        description: "Explainer: background on a topic. Learning: something we found out. Issue: a problem."
         options:
-          values:
-            - name: explainer
-              label: Explainer (educational background)
-            - name: learning
-              label: Learning (something we found out)
-            - name: issue
-              label: Issue (a problem)
-      - name: status
-        label: Status
-        type: select
-        description: Issues only. Leave blank for explainers and learnings.
-        options:
-          values:
-            - name: open
-              label: Open
-            - name: resolved
-              label: Resolved
+          values: [Explainer, Learning, Issue]
       - name: top_tag
         label: Top tag
         type: reference
         required: true
-        description: The branch this entry sits under on the map. New top tags are added under "Top tags".
+        description: The branch this entry sits under on the map. New top tags are added under "Top tags" in the menu.
         options:
           collection: topics
           value: "{name}"
           label: "{name}"
           search: name
-      - name: description
-        label: Short description
-        type: text
-        description: One to three sentences. Shown on the map and in search results.
+      - name: body
+        label: Text
+        type: rich-text
+        description: Start with a one-paragraph summary. It's shown on the map and in search. Add as much detail below it as you like.
       - name: tags
         label: Tags
         type: string
         list: true
-        description: Keywords people might search for, one per line.
+        description: Keywords people might search for. Optional.
       - name: related
         label: Related entries
         type: reference
+        description: Other entries worth reading alongside this one. Optional.
         options:
           collection: entries
           multiple: true
-          value: "{path}"
+          value: "{title}"
           label: "{title}"
           search: title
+      - name: status
+        label: Status (issues only)
+        type: select
+        description: Leave blank for explainers and learnings.
+        options:
+          values: [Open, Resolved]
       - name: contributors
         label: Contributors
         type: string
@@ -79,10 +72,7 @@ content:
       - name: image
         label: Image
         type: image
-      - name: body
-        label: Article
-        type: rich-text
-        description: The full article. Optional; short entries can leave this empty.
+        description: Optional picture shown at the top of the entry.
 
   - name: topics
     label: Top tags
@@ -101,3 +91,4 @@ content:
       - name: description
         label: Description
         type: text
+        description: One sentence about what belongs under this top tag. Optional.

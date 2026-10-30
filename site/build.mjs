@@ -50,11 +50,17 @@ for (const t of topicFiles) {
   topics.set(name.toLowerCase(), { id: t.slug, name, description: String(t.data.description || ""), items: [] });
 }
 
+// The summary is the first paragraph of the text, as plain words.
+function firstParagraph(md) {
+  const block = md.split(/\n\s*\n/).map(s => s.trim()).find(s => s && !/^(#|!\[|<|---|\||```)/.test(s)) || "";
+  return marked.parse(block).replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+}
+
 const entries = entryFiles.filter(e => String(e.data.title || "").trim()).map(e => {
   const d = e.data;
   const rawType = String(d.type || "").toLowerCase();
   const type = Object.keys(TYPE_WORDS).find(k => TYPE_WORDS[k].some(w => rawType.includes(w))) || "learning";
-  const topicName = String(d.top_tag || "").trim() || "Uncategorised";
+  const topicName = String(d.top_tag || d.topic || "").trim() || "Uncategorised";
   if (!topics.has(topicName.toLowerCase())) topics.set(topicName.toLowerCase(), { id: slugify(topicName), name: topicName, description: "", items: [] });
   return {
     id: e.slug,
@@ -63,7 +69,9 @@ const entries = entryFiles.filter(e => String(e.data.title || "").trim()).map(e 
     type,
     status: type === "issue" ? (String(d.status || "").toLowerCase() === "resolved" ? "resolved" : "open") : undefined,
     topicName,
-    summary: String(d.description || "").trim(),
+    // An older-style `description` setting still works; otherwise the text's first paragraph is the summary.
+    lead: String(d.description || "").trim(),
+    summary: String(d.description || "").trim() || firstParagraph(e.body),
     tags: asList(d.tags),
     contributors: asList(d.contributors),
     image: d.image ? String(d.image) : "",
@@ -73,11 +81,14 @@ const entries = entryFiles.filter(e => String(e.data.title || "").trim()).map(e 
   };
 });
 
-// Related entries are stored as paths ("entries/x.md"); titles also work. Links go both ways.
+// Related entries are listed by title (file paths also work). Links go both ways.
 const byKey = new Map();
 entries.forEach(e => { byKey.set(e.id.toLowerCase(), e.id); byKey.set(e.title.toLowerCase(), e.id); });
-const keyOf = s => byKey.get(path.basename(s).replace(/\.md$/, "").toLowerCase()) || byKey.get(s.toLowerCase());
-entries.forEach(e => { e.links = [...new Set(e.rawRelated.map(keyOf).filter(id => id && id !== e.id))]; });
+const keyOf = s => byKey.get(s.toLowerCase()) || byKey.get(path.basename(s).replace(/\.md$/, "").toLowerCase());
+entries.forEach(e => {
+  e.rawRelated.filter(s => !keyOf(s)).forEach(s => console.warn(`${e.file}: related entry "${s}" not found. Was it renamed?`));
+  e.links = [...new Set(e.rawRelated.map(keyOf).filter(id => id && id !== e.id))];
+});
 entries.forEach(e => e.links.forEach(id => { const o = entries.find(x => x.id === id); if (o && !o.links.includes(e.id)) o.links.push(e.id); }));
 entries.forEach(e => topics.get(e.topicName.toLowerCase()).items.push(e));
 const topicList = [...topics.values()].filter(t => t.items.length).sort((a, b) => a.name.localeCompare(b.name));
@@ -204,7 +215,7 @@ for (const e of entries) {
   <h1>${esc(e.title)}</h1>
   ${pills}
   ${e.image ? `<img class="hero-img" src="${esc(mediaUrl(e.image, prefix))}" alt="">` : ""}
-  ${e.summary ? `<p class="lead">${esc(e.summary)}</p>` : ""}
+  ${e.lead ? `<p class="lead">${esc(e.lead)}</p>` : ""}
   ${bodyHtml ? `<div class="prose">${bodyHtml}</div>` : ""}
   ${e.tags.length ? `<h3>Tags</h3><div class="tags">${e.tags.map(t => `<a class="tag" href="${prefix}?q=${encodeURIComponent(t)}">${esc(t)}</a>`).join("")}</div>` : ""}
   ${related.length ? `<h3>Related</h3><ul class="list">${related.map(r => entryRow(r, prefix, " · " + r.topicName)).join("")}</ul>` : ""}

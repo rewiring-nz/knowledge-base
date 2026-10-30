@@ -236,3 +236,4 @@ body.reading { height: auto; }
 body.home { display: flex; flex-direction: column; height: 100%; }
 body.home .app { flex: 1; min-height: 0; height: auto; }
 @media (max-width: 760px) { body.home { display: block; height: auto; } }
+.page .prose > p:first-child { font-size: 19px; line-height: 1.6; }

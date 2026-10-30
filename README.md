@@ -25,19 +25,9 @@ Every save is a commit here, so the full history is kept and any change can be u
 
 On every change to `main`, a GitHub Action runs `npm run build` and publishes `_site/` to GitHub Pages. There are no paid services and nothing to renew.
 
-### Entry fields
+### Entry files
 
-| Field | Notes |
-|---|---|
-| `title` | Required |
-| `type` | `explainer`, `learning` or `issue` |
-| `status` | `open` or `resolved`, issues only |
-| `top_tag` | Name of a top tag in `topics/` |
-| `description` | Short summary, shown on the map |
-| `tags` | List of keywords |
-| `related` | List of other entry paths, e.g. `entries/vehicle-to-load-explainer.md`. Links show on both entries |
-| `contributors` | List of names |
-| `image` | Uploaded image path |
+Each entry is a short block of settings followed by the text. The first paragraph of the text is the summary shown on the map. See [`entries/README.md`](entries/README.md) for the full format and an example.
 
 ### Building locally
 
