@@ -17,7 +17,7 @@ function ingest(topics) {
 }
 
 const TYPE_NAME = { issue: "Issue", learning: "Learning", explainer: "Explainer" };
-const state = { q: "", topic: "", tag: "", selected: null, collapsed: new Set(), filters: { issue: true, learning: true, explainer: true, open: true, resolved: true } };
+const state = { q: "", topic: "", tag: "", selected: null, collapsed: new Set() };
 const DUR = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350;
 const ROW = 30, TOPIC_GAP = 150, LEAF_GAP = 42, LABEL_MAX = 46;
 const ROOT_LABEL = KB.centreLabel;
@@ -29,8 +29,7 @@ const ctx = document.createElement("canvas").getContext("2d");
 const textW = (s, font) => { ctx.font = font; return ctx.measureText(s).width; };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const short = s => s.length > LABEL_MAX ? s.slice(0, LABEL_MAX - 1).trimEnd() + "…" : s;
-const passes = it => state.filters[it.type] && (it.type !== "issue" || state.filters[it.status]) &&
-  (!state.topic || it.topic.name === state.topic) && (!state.tag || it.tags.includes(state.tag));
+const passes = it => (!state.topic || it.topic.name === state.topic) && (!state.tag || it.tags.includes(state.tag));
 const keyClass = it => it.type === "issue" ? (it.status === "open" ? "issue-open" : "issue") : it.type;
 
 // Full-text search (assets/search.js) over the items the filters let through, best matches first.
@@ -240,8 +239,7 @@ function selectItem(id) {
   if (window.KBEditor) window.KBEditor.closeIfIdle();
   state.selected = id;
   state.collapsed.delete(it.topic.id);
-  if (!passes(it)) { state.filters[it.type] = true; if (it.status) state.filters[it.status] = true; syncChips(); }
-  if (!passes(it)) { state.topic = state.tag = ""; selects.topic.value = selects.tag.value = ""; }
+  if (!passes(it)) { state.topic = state.tag = ""; selects.tag.value = ""; syncChips(); }
   render();
   panTo(id);
   if (matchMedia("(max-width: 760px)").matches) document.getElementById("panel").scrollIntoView({ behavior: DUR ? "smooth" : "auto", block: "start" });
@@ -310,19 +308,12 @@ function renderPanel() {
       <h2>${n} result${n === 1 ? "" : "s"} for “${esc(state.q.trim())}”</h2>
       ${n ? `<ul class="list">${lastResults.map(resultRow).join("")}</ul>
         <p class="note"><a href="all/?q=${encodeURIComponent(state.q.trim())}">Open these results on the search page</a></p>`
-        : `<p>Nothing matches. Try fewer or shorter words, or check the filters above.</p>`}`;
+        : `<p>Nothing matches. Try fewer or shorter words, or show all top tags.</p>`}`;
   } else {
-    const all = [...ITEMS.values()];
-    const n = f => all.filter(f).length;
     p.innerHTML = `<p class="crumb">Overview</p>
       <h2>${esc(KB.title)}</h2>
       <p>${esc(KB.description)}</p>
-      <div class="stats">
-        <div class="stat"><b>${n(i => i.status === "open")}</b><span>Open issues</span></div>
-        <div class="stat"><b>${n(i => i.status === "resolved")}</b><span>Resolved issues</span></div>
-        <div class="stat"><b>${n(i => i.type === "learning")}</b><span>Learnings</span></div>
-        <div class="stat"><b>${n(i => i.type === "explainer")}</b><span>Explainers</span></div>
-      </div>
+      <div class="stats">${TOPICS.map(t => `<button type="button" class="stat" data-topic="${esc(t.id)}"><b>${t.items.length}</b><span>${esc(t.name)}</span></button>`).join("")}</div>
       <p class="note">Click anything on the map to read it.</p>`;
   }
 }
@@ -330,6 +321,8 @@ function renderPanel() {
 document.getElementById("panel").addEventListener("click", e => {
   const s = e.target.closest("[data-select]");
   if (s) return selectItem(s.dataset.select);
+  const t = e.target.closest("[data-topic]");
+  if (t) { state.selected = t.dataset.topic; state.collapsed.delete(t.dataset.topic); render(); panTo(t.dataset.topic); return; }
   const tag = e.target.closest("[data-tag]");
   if (tag) { setFilter("tag", tag.dataset.tag); return; }
   if (e.target.closest("[data-back]")) { state.selected = null; render(); }
@@ -344,31 +337,40 @@ q.addEventListener("keydown", e => {
   if (e.key === "Escape") setQuery("");
 });
 
-// Top tag and tag lists
-const selects = { topic: document.getElementById("m-topic"), tag: document.getElementById("m-tag") };
+// Top tag chips and the tag list
+const selects = { tag: document.getElementById("m-tag") };
+const topicChips = document.getElementById("m-topics");
 function setFilter(kind, value) {
-  const sel = selects[kind];
-  if (value && ![...sel.options].some(o => o.value === value)) sel.add(new Option(value, value));
-  sel.value = value || "";
-  state[kind] = sel.value;
-  const it = state.selected && ITEMS.get(state.selected);
-  if (it && !passes(it)) state.selected = null;
-  render();
-  setTimeout(() => fit(), DUR);
-}
-Object.entries(selects).forEach(([kind, sel]) => sel.addEventListener("change", () => setFilter(kind, sel.value)));
-
-function syncChips() {
-  document.querySelectorAll(".chip[data-f]").forEach(b => b.setAttribute("aria-pressed", String(state.filters[b.dataset.f])));
-}
-document.querySelectorAll(".chip[data-f]").forEach(b => b.addEventListener("click", () => {
-  const f = b.dataset.f;
-  state.filters[f] = !state.filters[f];
+  if (kind === "tag") {
+    const sel = selects.tag;
+    if (value && ![...sel.options].some(o => o.value === value)) sel.add(new Option(value, value));
+    sel.value = value || "";
+    value = sel.value;
+  }
+  state[kind] = value || "";
   syncChips();
   const it = state.selected && ITEMS.get(state.selected);
   if (it && !passes(it)) state.selected = null;
+  const t = state.selected && TOPIC_BY_ID.get(state.selected);
+  if (t && state.topic && t.name !== state.topic) state.selected = null;
   render();
-}));
+  setTimeout(() => fit(), DUR);
+}
+selects.tag.addEventListener("change", () => setFilter("tag", selects.tag.value));
+
+// One chip per top tag, rebuilt when suggestions add or rename one
+function drawChips() {
+  topicChips.innerHTML = [["", "All"], ...TOPICS.map(t => [t.name, t.name])]
+    .map(([v, label]) => `<button class="chip" data-topic="${esc(v)}" aria-pressed="false">${esc(label)}</button>`).join("");
+  syncChips();
+}
+function syncChips() {
+  topicChips.querySelectorAll(".chip").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.topic === state.topic)));
+}
+topicChips.addEventListener("click", e => {
+  const b = e.target.closest(".chip");
+  if (b) setFilter("topic", b.dataset.topic === state.topic ? "" : b.dataset.topic);
+});
 
 document.getElementById("zin").addEventListener("click", () => svg.transition().duration(DUR).call(zoom.scaleBy, 1.3));
 document.getElementById("zout").addEventListener("click", () => svg.transition().duration(DUR).call(zoom.scaleBy, 1 / 1.3));
@@ -406,6 +408,7 @@ function applyPending(list) {
   BASE_SEARCH.filter(e => !pendingIds.has(e.id)).forEach(e => SEARCH.push(e));
   list.forEach(p => SEARCH.push({ id: p.id, url: "", title: p.title, type: p.type, status: p.status, topic: p.top_tag, tags: p.tags, contributors: p.contributorsList, summary: p.summary, text: p.text }));
   ingest(topics.filter(t => t.items.length).sort((a, b) => a.name.localeCompare(b.name)));
+  drawChips();
   const legend = document.querySelector(".legend-pending");
   if (legend) legend.hidden = !list.length;
   render();
@@ -416,10 +419,10 @@ window.KBMap = { render: () => render(), selectItem, applyPending };
 ingest(KB.topics);
 const start = new URLSearchParams(location.search);
 if (start.get("q")) { q.value = start.get("q"); state.q = q.value; }
-for (const kind of ["topic", "tag"]) {
-  const v = start.get(kind);
-  if (v) { if (![...selects[kind].options].some(o => o.value === v)) selects[kind].add(new Option(v, v)); selects[kind].value = v; state[kind] = v; }
-}
+state.topic = start.get("topic") || "";
+const startTag = start.get("tag");
+if (startTag) { if (![...selects.tag.options].some(o => o.value === startTag)) selects.tag.add(new Option(startTag, startTag)); selects.tag.value = startTag; state.tag = startTag; }
+drawChips();
 render();
 fit(false);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { render(); if (!userMoved) fit(false); });

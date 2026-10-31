@@ -188,18 +188,12 @@ write("index.html", layout({
       <input id="q" type="search" autocomplete="off" placeholder="Search everything, e.g. V2G, export limit, warranty">
     </div>
     <div class="selects">
-      <label class="sr" for="m-topic">Top tag</label>
-      <select id="m-topic">${options(topicList.map(t => t.name), "All top tags")}</select>
       <label class="sr" for="m-tag">Tag</label>
       <select id="m-tag">${options(allTags, "All tags")}</select>
     </div>
-    <div class="filters" role="group" aria-label="Show or hide">
-      <button class="chip" id="f-issue" data-f="issue" aria-pressed="true"><span class="k issue"></span>Issues</button>
-      <button class="chip" id="f-learning" data-f="learning" aria-pressed="true"><span class="k learning"></span>Learnings</button>
-      <button class="chip" id="f-explainer" data-f="explainer" aria-pressed="true"><span class="k explainer"></span>Explainers</button>
-      <span class="sep" aria-hidden="true"></span>
-      <button class="chip" id="f-open" data-f="open" aria-pressed="true">Open</button>
-      <button class="chip" id="f-resolved" data-f="resolved" aria-pressed="true">Resolved</button>
+    <div class="filters" id="m-topics" role="group" aria-label="Top tags">
+      <button class="chip" data-topic="" aria-pressed="true">All</button>
+      ${topicList.map(t => `<button class="chip" data-topic="${esc(t.name)}" aria-pressed="false">${esc(t.name)}</button>`).join("\n      ")}
     </div>
   </div>
   <main class="main">
